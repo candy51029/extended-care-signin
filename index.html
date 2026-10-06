@@ -204,9 +204,9 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
       </section>
 
       <section data-panel="teachers" class="card" hidden>
-        <div class="row"><input id="newName" type="text" placeholder="輸入老師姓名" maxlength="20" aria-label="老師姓名"><button id="addBtn" class="btn ghost">新增</button></div>
+        <div class="row"><input id="newName" type="text" placeholder="輸入老師姓名（可一次貼上多位，用空格隔開）" style="flex:1;min-width:0" aria-label="老師姓名"><button id="addBtn" class="btn ghost">新增</button></div>
         <div id="tList" class="tlist"></div>
-        <div class="note">移除老師不會刪掉他已經打卡的紀錄。</div>
+        <div class="note">可以一次貼上多位老師，名字之間用空格、逗號或換行隔開。移除老師不會刪掉他已經打卡的紀錄。</div>
       </section>
 
       <section data-panel="qr" class="card" hidden>
@@ -557,10 +557,11 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
   $("addBtn").addEventListener("click", addTeacher);
   $("newName").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addTeacher(); } });
   async function addTeacher(){
-    const inp = $("newName"); const name = inp.value.trim(); if (!name || !db) return;
-    if (teachers.some(t => t.name === name)) { inp.select(); return; }
-    const id = "t" + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-    try { await db.doc("config/teachers").set({ list: [...teachers, { id, name }] }); inp.value = ""; inp.focus(); }
+    const inp = $("newName"); if (!db) return;
+    const names = [...new Set(inp.value.split(/[\s,，、;；]+/).map(x => x.trim()).filter(Boolean))].filter(n => !teachers.some(t => t.name === n));
+    if (!names.length) { inp.select(); return; }
+    const add = names.map((name, i) => ({ id: "t" + Date.now().toString(36) + i + Math.random().toString(36).slice(2,5), name }));
+    try { await db.doc("config/teachers").set({ list: [...teachers, ...add] }); inp.value = ""; inp.focus(); }
     catch (e) { alertAdmin("新增失敗：" + (e && e.message || "請稍後再試")); }
   }
 
