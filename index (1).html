@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>延長照顧教師簽到</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+/* Layout: one column. Pick month / class / time slot, check in, then the paper-style sheet below. Admin view swaps in behind a password. */
+:root{
+  --bg:#EDF4F5; --surface:#FFFFFF; --ink:#183039; --muted:#5B727B; --line:#D3E1E4;
+  --accent:#0C7A84; --accent-ink:#FFFFFF; --accent-soft:#D7EEF0;
+  --ok:#2F7D46; --ok-soft:#DDF1E3; --warn:#A4471F; --warn-soft:#F8E3D8;
+  --hx:#D9622B; --sm:#7A5BC7; --zy:#0C7A84;
+  --display:"LXGW WenKai TC","Noto Sans TC","PingFang TC","Microsoft JhengHei",serif;
+  --body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1D22; --surface:#16282E; --ink:#E3EEF0; --muted:#97AEB5; --line:#28414A;
+  --accent:#4FC2CB; --accent-ink:#06262A; --accent-soft:#163F45;
+  --ok:#7ED39A; --ok-soft:#173A24; --warn:#F0A07C; --warn-soft:#41261A;
+  --hx:#F2915F; --sm:#B39BF0; --zy:#4FC2CB; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1D22; --surface:#16282E; --ink:#E3EEF0; --muted:#97AEB5; --line:#28414A;
+  --accent:#4FC2CB; --accent-ink:#06262A; --accent-soft:#163F45;
+  --ok:#7ED39A; --ok-soft:#173A24; --warn:#F0A07C; --warn-soft:#41261A;
+  --hx:#F2915F; --sm:#B39BF0; --zy:#4FC2CB; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6}
+.wrap{max-width:780px;margin:0 auto;padding-inline:16px;padding-block:24px 56px;display:flex;flex-direction:column;gap:20px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{font-family:var(--display);font-weight:700;font-size:22px}
+.brand small{display:block;font-family:var(--body);font-weight:400;font-size:13px;color:var(--muted)}
+h2{font-family:var(--display);font-size:20px;margin:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.lbl{font-size:14px;color:var(--muted);font-weight:500}
+select,input[type=text],input[type=password]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-height:44px;font-variant-numeric:tabular-nums}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{font:inherit;font-size:16px;font-weight:500;min-height:44px;padding:6px 16px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
+.seg button[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--surface)}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}
+.names{display:grid;grid-template-columns:repeat(auto-fill,minmax(124px,1fr));gap:10px}
+.name{font:inherit;font-size:18px;font-weight:500;min-height:58px;border-radius:12px;border:2px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.25;padding:6px}
+.name:hover:not(:disabled){border-color:var(--accent)}
+.name[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent) inset}
+.name:disabled{cursor:default;opacity:.55}
+.name.done{opacity:1;background:var(--ok-soft);border-color:transparent;color:var(--ok)}
+.name small{font-size:12.5px;font-weight:400;font-variant-numeric:tabular-nums}
+.btn{font:inherit;font-weight:700;font-size:17px;border:0;border-radius:12px;padding:10px 22px;min-height:48px;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line);font-size:15px;min-height:42px;padding:6px 14px;font-weight:500}
+.btn.small{font-size:14px;min-height:36px;padding:4px 12px}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.msg{font-size:15px;border-radius:10px;padding:10px 14px}
+.msg.ok{background:var(--ok-soft);color:var(--ok)}
+.msg.err{background:var(--warn-soft);color:var(--warn)}
+.empty{color:var(--muted);font-size:15px;background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:14px}
+.note{font-size:13px;color:var(--muted)}
+/* paper sheet */
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px 16px 16px;display:flex;flex-direction:column;gap:14px;min-width:0;border-top:6px solid var(--cls,var(--accent))}
+.sheet-title{text-align:center;display:flex;flex-direction:column;gap:2px}
+.sheet-title .t1{font-family:var(--display);font-weight:700;font-size:clamp(17px,4.2vw,22px);line-height:1.4;text-wrap:balance}
+.sheet-title .t1 b{color:var(--cls,var(--accent));border:1.5px solid currentColor;border-radius:6px;padding:0 6px;margin-left:4px;white-space:nowrap}
+.sheet-title .t2{font-size:15px;font-variant-numeric:tabular-nums}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:left;vertical-align:middle}
+th:last-child,td:last-child{border-right:0}
+th{font-size:13px;color:var(--muted);font-weight:500;background:var(--bg);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.d{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:500;width:64px}
+td.w{color:var(--muted);width:44px;text-align:center}
+td.s{min-width:110px}
+tr.today td{background:var(--accent-soft)}
+tr.future td{color:var(--muted)}
+.sig{display:inline-flex;align-items:baseline;gap:6px;color:var(--ok);font-weight:500}
+.sig time{font-size:12.5px;font-weight:400;opacity:.85;font-variant-numeric:tabular-nums}
+.dash{color:var(--line)}
+/* admin */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{font:inherit;font-size:16px;font-weight:500;background:none;border:0;border-bottom:3px solid transparent;padding:8px 14px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tlist{display:flex;flex-wrap:wrap;gap:8px}
+.tl{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:999px;padding:2px 4px 2px 12px;font-size:15px}
+.tl button,.del{font:inherit;font-size:13px;border:0;background:transparent;color:var(--muted);cursor:pointer;border-radius:999px;padding:2px 8px}
+.tl button.confirm,.del.confirm{background:var(--warn);color:var(--surface)}
+.num{font-variant-numeric:tabular-nums;text-align:right}
+.big{font-family:var(--display);font-size:20px;font-weight:700}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cal .h{font-size:12.5px;color:var(--muted);text-align:center}
+.day{font:inherit;min-height:56px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.2;padding:4px 2px;font-variant-numeric:tabular-nums}
+.day small{font-size:11px;color:var(--muted);text-align:center;overflow:hidden;text-overflow:ellipsis;max-width:100%;white-space:nowrap}
+.day.work{background:var(--accent-soft);border-color:var(--accent)}
+.day.off{background:var(--bg)}
+.day.wkend{cursor:default;opacity:.5}
+.day.blank{visibility:hidden}
+.stats{display:flex;flex-wrap:wrap;gap:24px}
+.stats div{display:flex;flex-direction:column}
+html,body{margin:0}
+body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+.qrgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.qr{display:flex;flex-direction:column;align-items:center;gap:6px;border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff;color:#183039}
+.qr img{width:100%;max-width:200px;image-rendering:pixelated}
+.qr b{font-family:var(--display);font-size:18px}
+.qr span{font-size:11.5px;word-break:break-all;text-align:center;color:#5B727B}
+@media (prefers-reduced-motion:no-preference){.name,.btn,.seg button,.day{transition:background .15s,border-color .15s}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">延長照顧服務 教師簽到<small id="brandSub">海星班 · 水母班 · 章魚班</small></div>
+    <button id="adminBtn" class="btn ghost">後台管理</button>
+  </div>
+
+  <!-- ===== Sign-in view ===== -->
+  <div id="signView" style="display:flex;flex-direction:column;gap:20px">
+    <section class="card" aria-label="選擇簽到表">
+      <div class="row"><span class="lbl" style="width:40px">月份</span><select id="monthSel" aria-label="月份"></select></div>
+      <div class="row"><span class="lbl" style="width:40px">班級</span><div id="clsSeg" class="seg" role="group" aria-label="班級"></div></div>
+      <div class="row"><span class="lbl" style="width:40px">時段</span><div id="slotSeg" class="seg" role="group" aria-label="時段"></div></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-sign">
+      <h2 id="h-sign">打卡</h2>
+      <div id="signArea" style="display:flex;flex-direction:column;gap:14px">
+        <div class="row"><span class="lbl">日期</span><div id="dateSeg" class="seg" role="group" aria-label="打卡日期"></div><span id="slotInfo" class="note"></span></div>
+        <div class="note" style="margin-top:-6px">只能打今天的卡。漏打的話，請找管理者在後台補登。</div>
+        <div>
+          <div class="lbl" style="margin-bottom:8px">點選你的名字</div>
+          <div id="names" class="names" role="group" aria-label="老師名單"></div>
+          <div id="namesEmpty" class="empty" hidden>還沒有老師名單。請到「後台管理」新增老師。</div>
+        </div>
+        <div class="row"><button id="submitBtn" class="btn" disabled>送出打卡</button><span id="pickHint" class="note">請先選擇名字</span></div>
+      </div>
+      <div id="noDates" class="empty" hidden></div>
+      <div id="msg" class="msg" hidden role="status"></div>
+    </section>
+
+    <section id="sheet" class="sheet" aria-label="簽到表">
+      <div class="sheet-title"><div class="t1" id="t1"></div><div class="t2" id="t2"></div></div>
+      <div class="tablebox"><table>
+        <thead><tr><th>日期</th><th>星期</th><th colspan="2" id="thSlot">教師簽到</th></tr></thead>
+        <tbody id="sheetBody"></tbody>
+      </table></div>
+    </section>
+  </div>
+
+  <!-- ===== Admin view ===== -->
+  <div id="adminView" hidden style="display:flex;flex-direction:column;gap:20px">
+    <section id="gate" class="card" aria-labelledby="h-gate">
+      <h2 id="h-gate">後台管理</h2>
+      <div class="row"><input id="pw" type="password" inputmode="numeric" placeholder="請輸入密碼" aria-label="密碼"><button id="pwBtn" class="btn">進入</button></div>
+      <div id="pwMsg" class="msg err" hidden>密碼不正確，請再試一次。</div>
+    </section>
+
+    <div id="adminBody" hidden style="display:flex;flex-direction:column;gap:16px">
+      <div class="row"><span class="lbl">月份</span><select id="aMonthSel" aria-label="後台月份"></select></div>
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="sum" aria-selected="true">時數結算</button>
+        <button role="tab" data-tab="makeup" aria-selected="false">補打卡</button>
+        <button role="tab" data-tab="teachers" aria-selected="false">老師名單</button>
+        <button role="tab" data-tab="days" aria-selected="false">上班日設定</button>
+        <button role="tab" data-tab="qr" aria-selected="false">QR code</button>
+      </div>
+
+      <section data-panel="sum" class="card">
+        <div class="row" style="justify-content:space-between">
+          <div class="stats" id="stats"></div>
+          <button id="exportBtn" class="btn">匯出 Excel</button>
+        </div>
+        <div id="exportMsg" class="msg" hidden></div>
+        <div class="tablebox"><table>
+          <thead><tr><th>老師</th><th class="num">總時數</th><th class="num">海星班</th><th class="num">水母班</th><th class="num">章魚班</th><th>上班日期</th></tr></thead>
+          <tbody id="sumBody"></tbody>
+        </table></div>
+        <h2 style="font-size:17px">簽到明細</h2>
+        <div class="tablebox"><table>
+          <thead><tr><th>日期</th><th>班級</th><th>時段</th><th>老師</th><th>打卡時間</th><th></th></tr></thead>
+          <tbody id="detailBody"></tbody>
+        </table></div>
+        <div class="note">Excel 內含：時數結算、簽到明細，以及 6 張簽到表（3 班 × 2 時段）。打錯的打卡可在明細按「刪除」。</div>
+      </section>
+
+      <section data-panel="makeup" class="card" hidden>
+        <div class="note">幫漏打的老師補登。補登的紀錄會標示「補登」，時數照常計算。</div>
+        <div class="row"><label class="lbl" for="muDate" style="width:40px">日期</label><select id="muDate"></select></div>
+        <div class="row"><span class="lbl" style="width:40px">班級</span><div id="muCls" class="seg" role="group" aria-label="補登班級"></div></div>
+        <div class="row"><span class="lbl" style="width:40px">時段</span><div id="muSlot" class="seg" role="group" aria-label="補登時段"></div></div>
+        <div class="row"><label class="lbl" for="muTeacher" style="width:40px">老師</label><select id="muTeacher"></select></div>
+        <div id="muNow" class="note"></div>
+        <div class="row"><button id="muBtn" class="btn">補登打卡</button></div>
+        <div id="muMsg" class="msg" hidden role="status"></div>
+      </section>
+
+      <section data-panel="teachers" class="card" hidden>
+        <div class="row"><input id="newName" type="text" placeholder="輸入老師姓名" maxlength="20" aria-label="老師姓名"><button id="addBtn" class="btn ghost">新增</button></div>
+        <div id="tList" class="tlist"></div>
+        <div class="note">移除老師不會刪掉他已經打卡的紀錄。</div>
+      </section>
+
+      <section data-panel="qr" class="card" hidden>
+        <div class="note">老師用手機相機掃描就能打開打卡頁。班級 QR code 掃了會直接選好那一班，可以印出來貼在各班教室。</div>
+        <div id="qrGrid" class="qrgrid"></div>
+        <div class="row"><button id="qrPrint" class="btn ghost">列印 QR code</button></div>
+      </section>
+
+      <section data-panel="days" class="card" hidden>
+        <div class="note">預設為週一到週五，已扣除國定假日與補假。點日期可以切換「上班／放假」，例如寒假停課或颱風假。</div>
+        <div id="cal" class="cal"></div>
+        <div id="dayCount" class="note"></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="offline" class="msg err" hidden>目前連不上簽到資料庫，請確認網路後重新整理頁面。</div>
+</div>
+
+<script>
+(() => {
+  // ===== 設定 =====
+  // 請貼上你 Firebase 專案的設定（可以沿用圖書館系統的同一個專案；資料會存在 signin/ 底下，不會動到圖書館資料）
+  const FIREBASE_CONFIG = {
+    databaseURL: "https://jhong-sing-library-default-rtdb.asia-southeast1.firebasedatabase.app"
+  };
+  const ROOT = "signin";
+  const PASSWORD = "0000";
+  const CLASSES = [{id:"hx",name:"海星班",color:"var(--hx)"},{id:"sm",name:"水母班",color:"var(--sm)"},{id:"zy",name:"章魚班",color:"var(--zy)"}];
+  const SLOTS = [{id:"16",label:"16:00-17:00"},{id:"17",label:"17:00-18:00"}];
+  const PER_SLOT = 2;
+  // 國定假日與補假（只列週一至週五），依行政院人事行政總處 115、116 年辦公日曆表
+  const HOLIDAYS = {
+    "2026-10-09":"國慶日補假","2026-10-26":"光復節補假",
+    "2026-12-25":"行憲紀念日",
+    "2027-01-01":"開國紀念日",
+    "2027-02-04":"小年夜","2027-02-05":"除夕","2027-02-08":"春節","2027-02-09":"春節補假","2027-02-10":"春節補假",
+    "2027-03-01":"和平紀念日補假",
+    "2027-04-05":"清明節","2027-04-06":"兒童節補假",
+    "2027-04-30":"勞動節補假",
+    "2027-06-09":"端午節",
+    "2027-09-15":"中秋節","2027-09-28":"教師節",
+    "2027-10-11":"國慶日補假","2027-10-25":"光復節補假",
+    "2027-12-24":"行憲紀念日補假","2027-12-31":"開國紀念日補假"
+  };
+  const MONTHS = []; for (let y = 2026, m = 10; y < 2028; ) { MONTHS.push(y + "-" + String(m).padStart(2,"0")); if (++m > 12) { m = 1; y++; } }
+  const WK = ["日","一","二","三","四","五","六"];
+
+  const pad = n => String(n).padStart(2,"0");
+  const ymdParts = s => s.split("-").map(Number);
+  const wkIdx = s => { const [y,m,d] = ymdParts(s); return new Date(Date.UTC(y,m-1,d)).getUTCDay(); };
+  const dayNum = s => { const [y,m,d] = ymdParts(s); return Date.UTC(y,m-1,d) / 86400000; };
+  const dayDiff = (a, b) => dayNum(a) - dayNum(b);
+  const addDays = (s, n) => new Date((dayNum(s) + n) * 86400000).toISOString().slice(0,10);
+  const md = s => { const [,m,d] = ymdParts(s); return pad(m) + "/" + pad(d); };
+  const mdShort = s => { const [,m,d] = ymdParts(s); return m + "/" + d; };
+  const roc = s => { const [y,m,d] = ymdParts(s); return (y-1911) + "." + pad(m) + "." + pad(d); };
+  const tpeDate = new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"});
+  const tpeTime = new Intl.DateTimeFormat("zh-TW",{timeZone:"Asia/Taipei",hour:"2-digit",minute:"2-digit",hour12:false});
+  const TODAY = tpeDate.format(new Date());
+  const fmtTime = iso => { try { return tpeTime.format(new Date(iso)); } catch { return ""; } };
+  const clsName = id => (CLASSES.find(c => c.id === id) || {}).name || id;
+  const slotLabel = id => (SLOTS.find(s => s.id === id) || {}).label || id;
+
+  function monthLabel(ym){ const [y,m] = ymdParts(ym); return (y-1911) + " 年 " + m + " 月"; }
+  function termOf(ym){ const [y,m] = ymdParts(ym); const ay = m >= 8 ? y-1911 : y-1912; const sem = (m >= 8 || m === 1) ? "第一學期" : "第二學期"; return {ay, sem, m}; }
+  function daysInMonth(ym){ const [y,m] = ymdParts(ym); return new Date(Date.UTC(y,m,0)).getUTCDate(); }
+  function isWork(date){
+    if (overrides.on.includes(date)) return true;
+    if (overrides.off.includes(date)) return false;
+    const w = wkIdx(date); return w !== 0 && w !== 6 && !HOLIDAYS[date];
+  }
+  function workDays(ym){ const out = []; for (let d = 1; d <= daysInMonth(ym); d++) { const s = ym + "-" + pad(d); if (isWork(s)) out.push(s); } return out; }
+  function sheetTitles(ym, cls, slot){
+    const {ay, sem, m} = termOf(ym); const wd = workDays(ym);
+    const range = wd.length ? "《" + roc(wd[0]) + "-" + roc(wd[wd.length-1]) + "》" : "";
+    return { t1: ay + "學年度" + sem + m + "月延長照顧服務教師簽到表", cls: clsName(cls), t2: range + "時間：" + slotLabel(slot) + "(每天1小時)" };
+  }
+
+  // ---------- state ----------
+  const $ = id => document.getElementById(id);
+  let teachers = [], overrides = {on:[], off:[]}, checkins = {}; // checkins: id -> doc (current ym)
+  const startYm = TODAY.slice(0,7) >= MONTHS[0] ? (MONTHS.includes(TODAY.slice(0,7)) ? TODAY.slice(0,7) : MONTHS[MONTHS.length-1]) : MONTHS[0];
+  let ym = startYm, cls = "hx", slot = "16", date = null, picked = null;
+  let db = null, downloads = null, unsubCk = null, unlocked = false, tab = "sum";
+  let muDate = null, muCls = "hx", muSlot = "16", muTeacher = "";
+  let pending = null, pendingTimer = null;
+
+  const ckFor = (d, c, s) => Object.values(checkins).filter(x => x.date === d && x.cls === c && x.slot === s).sort((a,b) => String(a.at).localeCompare(String(b.at)));
+  const ckId = (d, c, s, t) => d.replace(/-/g,"") + "_" + c + "_" + s + "_" + t;
+
+  // ---------- controls ----------
+  for (const sel of [$("monthSel"), $("aMonthSel")]) {
+    for (const m of MONTHS) { const o = document.createElement("option"); o.value = m; o.textContent = monthLabel(m); sel.appendChild(o); }
+    sel.value = ym;
+    sel.addEventListener("change", e => { setMonth(e.target.value); });
+  }
+  function setMonth(m){ ym = m; $("monthSel").value = m; $("aMonthSel").value = m; date = null; picked = null; hideMsg(); subscribeMonth(); renderAll(); }
+
+  function buildSeg(el, items, get, set, withDot){
+    el.replaceChildren();
+    for (const it of items) {
+      const b = document.createElement("button"); b.type = "button";
+      if (withDot) { const d = document.createElement("span"); d.className = "dot"; d.style.background = it.color; b.appendChild(d); }
+      b.appendChild(document.createTextNode(it.name || it.label));
+      b.setAttribute("aria-pressed", String(get() === it.id));
+      b.addEventListener("click", () => { set(it.id); picked = null; hideMsg(); renderAll(); });
+      el.appendChild(b);
+    }
+  }
+
+  function showMsg(t, k){ const m = $("msg"); m.textContent = t; m.className = "msg " + k; m.hidden = false; }
+  function hideMsg(){ $("msg").hidden = true; }
+
+  // ---------- sign view ----------
+  function renderSign(){
+    buildSeg($("clsSeg"), CLASSES, () => cls, v => cls = v, true);
+    buildSeg($("slotSeg"), SLOTS, () => slot, v => slot = v, false);
+    const color = CLASSES.find(c => c.id === cls).color;
+    $("sheet").style.setProperty("--cls", color);
+
+    const wd = workDays(ym);
+    const allowed = wd.filter(d => d === TODAY);
+    if (!allowed.includes(date)) date = allowed.includes(TODAY) ? TODAY : allowed.filter(d => d < TODAY).pop() || allowed[0] || null;
+    const dseg = $("dateSeg"); dseg.replaceChildren();
+    for (const d of allowed) { const b = document.createElement("button"); b.type = "button"; b.textContent = md(d) + "（" + WK[wkIdx(d)] + "）" + (d === TODAY ? " 今天" : " 補打"); b.setAttribute("aria-pressed", String(d === date)); b.addEventListener("click", () => { date = d; picked = null; hideMsg(); renderSign(); }); dseg.appendChild(b); }
+    $("signArea").hidden = !date;
+    $("noDates").hidden = !!date;
+    if (!date) { const nx = wd.find(d => d > TODAY); $("noDates").textContent = !wd.length ? "這個月沒有設定上班日。" : TODAY.slice(0,7) === ym ? "今天不是上班日，不用打卡。" : nx ? mdShort(nx) + " 的卡要等當天才能打。" : monthLabel(ym) + "已經結束。漏打的卡請找管理者在後台補登。"; }
+
+    if (date) {
+      const signed = ckFor(date, cls, slot);
+      const signedIds = new Set(signed.map(c => c.teacherId));
+      const full = signed.length >= PER_SLOT;
+      // same teacher, same date & slot, in another class
+      const busy = new Map(Object.values(checkins).filter(x => x.date === date && x.slot === slot && x.cls !== cls).map(x => [x.teacherId, x.cls]));
+      $("slotInfo").textContent = clsName(cls) + " " + slotLabel(slot) + "　已簽 " + signed.length + " / " + PER_SLOT + " 人";
+      const names = $("names"); names.replaceChildren();
+      $("namesEmpty").hidden = teachers.length > 0;
+      for (const t of teachers) {
+        const b = document.createElement("button"); b.type = "button"; b.className = "name";
+        const s = document.createElement("span"); s.textContent = t.name; b.appendChild(s);
+        const sm = document.createElement("small");
+        if (signedIds.has(t.id)) { b.disabled = true; b.classList.add("done"); sm.textContent = "已打卡 " + stamp(signed.find(c => c.teacherId === t.id)); }
+        else if (busy.has(t.id)) { b.disabled = true; sm.textContent = "已在" + clsName(busy.get(t.id)); }
+        else if (full) { b.disabled = true; }
+        else { b.setAttribute("aria-pressed", String(picked === t.id)); b.addEventListener("click", () => { picked = picked === t.id ? null : t.id; hideMsg(); renderSign(); }); }
+        if (sm.textContent) b.appendChild(sm);
+        names.appendChild(b);
+      }
+      if (picked && (signedIds.has(picked) || busy.has(picked) || full || !teachers.some(t => t.id === picked))) picked = null;
+      const pt = teachers.find(t => t.id === picked);
+      $("submitBtn").disabled = !pt || !db;
+      $("pickHint").textContent = !db ? "連線中…" : full ? "這個時段已經有 " + PER_SLOT + " 位老師簽到" : pt ? "將以「" + pt.name + "」簽 " + mdShort(date) + " " + clsName(cls) + " " + slotLabel(slot) : "請先選擇名字";
+    }
+
+    // sheet
+    const tt = sheetTitles(ym, cls, slot);
+    $("t1").textContent = tt.t1; const b = document.createElement("b"); b.textContent = tt.cls; $("t1").appendChild(b);
+    $("t2").textContent = tt.t2;
+    $("thSlot").textContent = "教師簽到　" + slotLabel(slot);
+    const body = $("sheetBody"); body.replaceChildren();
+    if (!wd.length) { const tr = document.createElement("tr"); const td = document.createElement("td"); td.colSpan = 4; td.className = "note"; td.textContent = "這個月沒有上班日。"; tr.appendChild(td); body.appendChild(tr); }
+    for (const d of wd) {
+      const tr = document.createElement("tr");
+      if (d === TODAY) tr.className = "today"; else if (d > TODAY) tr.className = "future";
+      const a = document.createElement("td"); a.className = "d"; a.textContent = md(d);
+      const w = document.createElement("td"); w.className = "w"; w.textContent = WK[wkIdx(d)];
+      tr.append(a, w);
+      const list = ckFor(d, cls, slot);
+      for (let i = 0; i < PER_SLOT; i++) {
+        const td = document.createElement("td"); td.className = "s";
+        const c = list[i];
+        if (c) { const s = document.createElement("span"); s.className = "sig"; const n = document.createElement("span"); n.textContent = c.name; const t = document.createElement("time"); t.textContent = stamp(c); s.append(n, t); td.appendChild(s); }
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+  }
+
+
+  $("submitBtn").addEventListener("click", async () => {
+    const t = teachers.find(x => x.id === picked); if (!t || !db || !date) return;
+    const d = date, c = cls, s = slot;
+    $("submitBtn").disabled = true;
+    try {
+      const snap = await db.collection("checkins").where("ym","==",ym).get();
+      const now = snap.docs.map(x => x.data()).filter(x => x.date === d && x.slot === s);
+      if (now.some(x => x.cls === c && x.teacherId === t.id)) { showMsg(t.name + " 已經打過這個時段的卡了。", "ok"); picked = null; renderSign(); return; }
+      if (now.filter(x => x.cls === c).length >= PER_SLOT) { showMsg("這個時段剛好已經滿 " + PER_SLOT + " 人了。", "err"); picked = null; renderSign(); return; }
+      if (now.some(x => x.cls !== c && x.teacherId === t.id)) { showMsg(t.name + " 這個時段已經在其他班打過卡。", "err"); picked = null; renderSign(); return; }
+      const at = new Date().toISOString();
+      await db.doc("checkins/" + ckId(d,c,s,t.id)).set({ ym: d.slice(0,7), date: d, cls: c, slot: s, teacherId: t.id, name: t.name, at });
+      picked = null;
+      showMsg("✓ " + t.name + " 已完成打卡：" + mdShort(d) + " " + clsName(c) + " " + slotLabel(s) + "（" + fmtTime(at) + "）", "ok");
+      renderSign();
+    } catch (e) {
+      showMsg(e && e.code === "invalid_argument" ? "你目前的權限只能查看，無法打卡，請聯絡管理者。" : "打卡沒有送出，請再按一次送出。", "err");
+      renderSign();
+    }
+  });
+
+  // ---------- admin ----------
+  $("adminBtn").addEventListener("click", () => {
+    const toAdmin = $("adminView").hidden;
+    $("adminView").hidden = !toAdmin; $("signView").hidden = toAdmin;
+    $("adminBtn").textContent = toAdmin ? "回到簽到" : "後台管理";
+    if (toAdmin && !unlocked) setTimeout(() => $("pw").focus(), 0);
+    renderAll();
+  });
+  function tryPw(){ if ($("pw").value === PASSWORD) { unlocked = true; $("pw").value = ""; $("pwMsg").hidden = true; renderAll(); } else { $("pwMsg").hidden = false; } }
+  $("pwBtn").addEventListener("click", tryPw);
+  $("pw").addEventListener("keydown", e => { if (e.key === "Enter") tryPw(); });
+  for (const b of document.querySelectorAll(".tabs button")) b.addEventListener("click", () => { tab = b.dataset.tab; renderAdmin(); });
+
+  function armOrRun(key, fn){
+    clearTimeout(pendingTimer);
+    if (pending === key) { pending = null; fn().catch(e => alertAdmin("沒有成功：" + (e && e.message || "請稍後再試"))); renderAdmin(); return; }
+    pending = key; renderAdmin();
+    pendingTimer = setTimeout(() => { pending = null; renderAdmin(); }, 4000);
+  }
+  function alertAdmin(t, ok){ const m = $("exportMsg"); m.textContent = t; m.className = "msg " + (ok ? "ok" : "err"); m.hidden = false; }
+
+  function summary(){
+    const all = Object.values(checkins).filter(x => x.ym === ym);
+    const byT = new Map();
+    for (const t of teachers) byT.set(t.id, { name: t.name, total: 0, hx: 0, sm: 0, zy: 0, dates: [] });
+    for (const c of all) {
+      if (!byT.has(c.teacherId)) byT.set(c.teacherId, { name: c.name, total: 0, hx: 0, sm: 0, zy: 0, dates: [] });
+      const r = byT.get(c.teacherId); r.total++; r[c.cls] = (r[c.cls] || 0) + 1; r.dates.push(c);
+    }
+    for (const r of byT.values()) r.dates.sort((a,b) => (a.date + a.slot).localeCompare(b.date + b.slot));
+    return { all: all.sort((a,b) => (a.date + a.cls + a.slot + a.at).localeCompare(b.date + b.cls + b.slot + b.at)), rows: [...byT.values()] };
+  }
+  const dateListText = r => SLOTS.map(sl => { const ds = [...new Set(r.dates.filter(c => c.slot === sl.id).map(c => mdShort(c.date)))]; return ds.length ? sl.id + "-" + (Number(sl.id)+1) + ":" + ds.join(".") : ""; }).filter(Boolean).join("\n");
+  const stamp = c => c.makeup ? "補登" : fmtTime(c.at);
+
+  function renderAdmin(){
+    $("gate").hidden = unlocked; $("adminBody").hidden = !unlocked;
+    if (!unlocked) return;
+    for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
+    for (const p of document.querySelectorAll("[data-panel]")) p.hidden = p.dataset.panel !== tab;
+    if (tab === "qr") renderQr();
+
+    // summary
+    const { all, rows } = summary();
+    const st = $("stats"); st.replaceChildren();
+    const wd = workDays(ym);
+    for (const [k, v] of [["上班日", wd.length + " 天"], ["總簽到時數", all.length + " 小時"], ["應有人次", wd.length * CLASSES.length * SLOTS.length * PER_SLOT + " 人次"]]) {
+      const d = document.createElement("div"); const a = document.createElement("span"); a.className = "lbl"; a.textContent = k; const b = document.createElement("span"); b.className = "big"; b.textContent = v; d.append(a, b); st.appendChild(d);
+    }
+    const sb = $("sumBody"); sb.replaceChildren();
+    if (!rows.length) { const tr = document.createElement("tr"); const td = document.createElement("td"); td.colSpan = 6; td.className = "note"; td.textContent = "還沒有老師名單或簽到紀錄。"; tr.appendChild(td); sb.appendChild(tr); }
+    for (const r of rows) {
+      const tr = document.createElement("tr");
+      const cells = [r.name, r.total, r.hx || 0, r.sm || 0, r.zy || 0, dateListText(r) || "—"];
+      cells.forEach((v, i) => { const td = document.createElement("td"); td.textContent = v; if (i >= 1 && i <= 4) td.className = "num"; if (i === 1) td.style.fontWeight = "700"; if (i === 5) { td.style.fontSize = "13.5px"; td.style.whiteSpace = "pre-line"; td.style.fontVariantNumeric = "tabular-nums"; } tr.appendChild(td); });
+      sb.appendChild(tr);
+    }
+    const db_ = $("detailBody"); db_.replaceChildren();
+    if (!all.length) { const tr = document.createElement("tr"); const td = document.createElement("td"); td.colSpan = 6; td.className = "note"; td.textContent = monthLabel(ym) + "還沒有簽到紀錄。"; tr.appendChild(td); db_.appendChild(tr); }
+    for (const c of all) {
+      const tr = document.createElement("tr");
+      for (const v of [md(c.date) + "（" + WK[wkIdx(c.date)] + "）", clsName(c.cls), slotLabel(c.slot), c.name, stamp(c)]) { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); }
+      const td = document.createElement("td"); const x = document.createElement("button"); x.type = "button"; x.className = "del";
+      const id = ckId(c.date, c.cls, c.slot, c.teacherId); const key = "c:" + id;
+      x.textContent = pending === key ? "確定刪除" : "刪除"; if (pending === key) x.classList.add("confirm");
+      x.addEventListener("click", () => armOrRun(key, () => db.doc("checkins/" + id).delete()));
+      td.appendChild(x); tr.appendChild(td); db_.appendChild(tr);
+    }
+
+    // teachers
+    const tl = $("tList"); tl.replaceChildren();
+    if (!teachers.length) { const e = document.createElement("span"); e.className = "note"; e.textContent = "尚未新增老師。"; tl.appendChild(e); }
+    for (const t of teachers) {
+      const s = document.createElement("span"); s.className = "tl";
+      const n = document.createElement("span"); n.textContent = t.name; s.appendChild(n);
+      const b = document.createElement("button"); b.type = "button"; const key = "t:" + t.id;
+      b.textContent = pending === key ? "確定移除" : "移除"; if (pending === key) b.classList.add("confirm");
+      b.addEventListener("click", () => armOrRun(key, () => db.doc("config/teachers").set({ list: teachers.filter(x => x.id !== t.id) })));
+      s.appendChild(b); tl.appendChild(s);
+    }
+
+    // make-up
+    const muD = $("muDate"); const pastDays = wd.filter(d => d <= TODAY).reverse();
+    if (!pastDays.includes(muDate)) muDate = pastDays[0] || null;
+    muD.replaceChildren();
+    for (const d of pastDays) { const o = document.createElement("option"); o.value = d; o.textContent = md(d) + "（" + WK[wkIdx(d)] + "）" + (d === TODAY ? " 今天" : ""); muD.appendChild(o); }
+    if (muDate) muD.value = muDate;
+    buildSeg($("muCls"), CLASSES, () => muCls, v => muCls = v, true);
+    buildSeg($("muSlot"), SLOTS, () => muSlot, v => muSlot = v, false);
+    const muT = $("muTeacher"); muT.replaceChildren();
+    const ph = document.createElement("option"); ph.value = ""; ph.textContent = "選擇老師"; muT.appendChild(ph);
+    for (const t of teachers) { const o = document.createElement("option"); o.value = t.id; o.textContent = t.name; muT.appendChild(o); }
+    if (!teachers.some(t => t.id === muTeacher)) muTeacher = "";
+    muT.value = muTeacher;
+    const muList = muDate ? ckFor(muDate, muCls, muSlot) : [];
+    $("muNow").textContent = !muDate ? monthLabel(ym) + "還沒有可以補登的日期。" : clsName(muCls) + " " + slotLabel(muSlot) + " " + mdShort(muDate) + "：已簽 " + muList.length + " / " + PER_SLOT + " 人" + (muList.length ? "（" + muList.map(c => c.name).join("、") + "）" : "");
+    $("muBtn").disabled = !muDate || !muTeacher || muList.length >= PER_SLOT;
+
+    // calendar
+    const cal = $("cal"); cal.replaceChildren();
+    for (const h of WK) { const e = document.createElement("div"); e.className = "h"; e.textContent = h; cal.appendChild(e); }
+    const first = wkIdx(ym + "-01");
+    for (let i = 0; i < first; i++) { const e = document.createElement("div"); e.className = "day blank"; cal.appendChild(e); }
+    for (let d = 1; d <= daysInMonth(ym); d++) {
+      const s = ym + "-" + pad(d); const w = wkIdx(s); const work = isWork(s);
+      const b = document.createElement("button"); b.type = "button";
+      b.className = "day " + (work ? "work" : "off") + ((w === 0 || w === 6) && !work ? " wkend" : "");
+      const n = document.createElement("span"); n.textContent = d; b.appendChild(n);
+      const sm = document.createElement("small"); sm.textContent = work ? "上班" : (HOLIDAYS[s] && !overrides.off.includes(s) ? HOLIDAYS[s] : (w === 0 || w === 6) ? "" : "放假"); b.appendChild(sm);
+      b.title = s + (HOLIDAYS[s] ? " " + HOLIDAYS[s] : "");
+      b.addEventListener("click", () => toggleDay(s));
+      cal.appendChild(b);
+    }
+    $("dayCount").textContent = monthLabel(ym) + "共 " + wd.length + " 個上班日：" + wd.map(mdShort).join("、");
+  }
+
+  async function toggleDay(s){
+    if (!db) return;
+    const w = wkIdx(s); const base = w !== 0 && w !== 6 && !HOLIDAYS[s];
+    const now = isWork(s);
+    let on = overrides.on.filter(x => x !== s), off = overrides.off.filter(x => x !== s);
+    if (now === base) { (base ? off : on).push(s); } // move away from default
+    try { await db.doc("config/days").set({ on, off }); } catch (e) { alertAdmin("上班日沒有存到：" + (e && e.message || "請再試一次")); }
+  }
+
+  $("muDate").addEventListener("change", e => { muDate = e.target.value; $("muMsg").hidden = true; renderAdmin(); });
+  $("muTeacher").addEventListener("change", e => { muTeacher = e.target.value; $("muMsg").hidden = true; renderAdmin(); });
+  function muShow(t, ok){ const m = $("muMsg"); m.textContent = t; m.className = "msg " + (ok ? "ok" : "err"); m.hidden = false; }
+  $("muBtn").addEventListener("click", async () => {
+    const t = teachers.find(x => x.id === muTeacher); if (!t || !muDate || !db) return;
+    const d = muDate, c = muCls, s = muSlot;
+    $("muBtn").disabled = true;
+    try {
+      const snap = await db.collection("checkins").where("ym","==",d.slice(0,7)).get();
+      const now = snap.docs.map(x => x.data()).filter(x => x.date === d && x.slot === s);
+      if (now.some(x => x.cls === c && x.teacherId === t.id)) { muShow(t.name + " 這個時段已經有打卡紀錄了。"); renderAdmin(); return; }
+      if (now.filter(x => x.cls === c).length >= PER_SLOT) { muShow("這個時段已經滿 " + PER_SLOT + " 人了。"); renderAdmin(); return; }
+      const other = now.find(x => x.cls !== c && x.teacherId === t.id);
+      if (other) { muShow(t.name + " 這個時段已經在" + clsName(other.cls) + "打過卡。"); renderAdmin(); return; }
+      await db.doc("checkins/" + ckId(d,c,s,t.id)).set({ ym: d.slice(0,7), date: d, cls: c, slot: s, teacherId: t.id, name: t.name, at: new Date().toISOString(), makeup: true });
+      muShow("已幫 " + t.name + " 補登：" + mdShort(d) + " " + clsName(c) + " " + slotLabel(s), true);
+      muTeacher = ""; renderAdmin();
+    } catch (e) { muShow("補登沒有成功：" + (e && e.message || "請再試一次")); renderAdmin(); }
+  });
+
+  $("addBtn").addEventListener("click", addTeacher);
+  $("newName").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addTeacher(); } });
+  async function addTeacher(){
+    const inp = $("newName"); const name = inp.value.trim(); if (!name || !db) return;
+    if (teachers.some(t => t.name === name)) { inp.select(); return; }
+    const id = "t" + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+    try { await db.doc("config/teachers").set({ list: [...teachers, { id, name }] }); inp.value = ""; inp.focus(); }
+    catch (e) { alertAdmin("新增失敗：" + (e && e.message || "請稍後再試")); }
+  }
+
+  // ---------- export ----------
+  $("exportBtn").addEventListener("click", async () => {
+    if (!window.XLSX) { alertAdmin("Excel 元件還沒載入，請稍候再按一次。"); return; }
+    if (!downloads) { alertAdmin("這個檢視畫面不能下載檔案。"); return; }
+    const X = window.XLSX; const wb = X.utils.book_new();
+    const { ay, sem, m } = termOf(ym); const wd = workDays(ym);
+    const { all, rows } = summary();
+    // 1. summary
+    const head = ay + "學年度" + sem + m + "月延長照顧服務 教師時數結算";
+    const range = wd.length ? "《" + roc(wd[0]) + "-" + roc(wd[wd.length-1]) + "》上班日 " + wd.length + " 天" : "";
+    const sumRows = [[head], [range], [], ["老師", "總時數", "海星班", "水母班", "章魚班", "上班日期"]];
+    for (const r of rows) sumRows.push([r.name, r.total, r.hx || 0, r.sm || 0, r.zy || 0, dateListText(r)]);
+    sumRows.push(["合計", rows.reduce((a, r) => a + r.total, 0), rows.reduce((a, r) => a + (r.hx||0), 0), rows.reduce((a, r) => a + (r.sm||0), 0), rows.reduce((a, r) => a + (r.zy||0), 0), ""]);
+    const ws1 = X.utils.aoa_to_sheet(sumRows); ws1["!cols"] = [{wch:12},{wch:8},{wch:8},{wch:8},{wch:8},{wch:42}];
+    const wrap = { alignment: { wrapText: true, vertical: "top" } };
+    for (let r = 4; r < sumRows.length; r++) { const ref = X.utils.encode_cell({ r, c: 5 }); if (ws1[ref]) ws1[ref].s = wrap; }
+    for (const ref of ["A1","A2"]) if (ws1[ref]) ws1[ref].s = { font: { bold: ref === "A1", sz: ref === "A1" ? 14 : 11 } };
+    ws1["!merges"] = [{s:{r:0,c:0},e:{r:0,c:5}},{s:{r:1,c:0},e:{r:1,c:5}}];
+    X.utils.book_append_sheet(wb, ws1, "時數結算");
+    // 2. detail
+    const det = [["日期", "星期", "班級", "時段", "老師", "打卡時間", "時數"]];
+    for (const c of all) det.push([roc(c.date), WK[wkIdx(c.date)], clsName(c.cls), slotLabel(c.slot), c.name, stamp(c), 1]);
+    const ws2 = X.utils.aoa_to_sheet(det); ws2["!cols"] = [{wch:12},{wch:6},{wch:8},{wch:13},{wch:12},{wch:10},{wch:6}];
+    X.utils.book_append_sheet(wb, ws2, "簽到明細");
+    // 3. six paper sheets
+    for (const c of CLASSES) for (const s of SLOTS) {
+      const tt = sheetTitles(ym, c.id, s.id);
+      const aoa = [[tt.t1 + tt.cls], [tt.t2], ["日期/時間", "星期", "教師簽到 " + s.label, ""]];
+      for (const d of wd) { const l = ckFor(d, c.id, s.id); aoa.push([md(d), WK[wkIdx(d)], l[0] ? l[0].name + " " + stamp(l[0]) : "", l[1] ? l[1].name + " " + stamp(l[1]) : ""]); }
+      const ws = X.utils.aoa_to_sheet(aoa); ws["!cols"] = [{wch:10},{wch:6},{wch:20},{wch:20}];
+      ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:3}},{s:{r:1,c:0},e:{r:1,c:3}},{s:{r:2,c:2},e:{r:2,c:3}}];
+      X.utils.book_append_sheet(wb, ws, c.name + " " + s.id + "-" + (Number(s.id)+1));
+    }
+    const buf = X.write(wb, { bookType: "xlsx", type: "array" });
+    try {
+      await downloads.save({ filename: (termOf(ym).ay) + "學年度" + m + "月延長照顧簽到與時數.xlsx", data: buf });
+      alertAdmin("已匯出 " + monthLabel(ym) + "的 Excel。", true);
+    } catch (e) { if (e && e.code !== "declined") alertAdmin("匯出沒有完成：" + (e.message || e.code)); }
+  });
+
+  // ---------- data ----------
+  function subscribeMonth(){
+    if (!db) return;
+    if (unsubCk) unsubCk();
+    checkins = {};
+    unsubCk = db.collection("checkins").where("ym","==",ym).limit(1000).onSnapshot(s => {
+      const m = {}; for (const d of s.docs) { const v = d.data(); if (v && v.date && v.teacherId) m[d.id] = v; }
+      checkins = m; renderAll();
+    }, () => { $("offline").hidden = false; });
+  }
+
+  function renderAll(){ if (!$("signView").hidden) renderSign(); if (!$("adminView").hidden) renderAdmin(); }
+  renderAll();
+
+  // ---------- Firebase ----------
+  function makeDb(rtdb){
+    const ckPath = id => ROOT + "/checkins/" + id.slice(0,4) + "-" + id.slice(4,6) + "/" + id;
+    const docPath = p => p.startsWith("checkins/") ? ckPath(p.slice(9)) : ROOT + "/" + p;
+    const qs = s => { const v = s.val() || {}; return { docs: Object.keys(v).map(id => ({ id, data: () => v[id] })) }; };
+    const listen = (r, map, fn, err) => { const h = s => fn(map(s)); r.on("value", h, e => err && err(e)); return () => r.off("value", h); };
+    return {
+      doc(p){ const r = rtdb.ref(docPath(p)); return {
+        set: v => r.set(v), delete: () => r.remove(),
+        onSnapshot: (fn, err) => listen(r, s => ({ exists: s.exists(), data: () => s.val() || undefined }), fn, err) }; },
+      collection(){ let ymv = ""; const q = {
+        where(f, op, v){ ymv = v; return q; }, limit(){ return q; },
+        get: async () => qs(await rtdb.ref(ROOT + "/checkins/" + ymv).get()),
+        onSnapshot: (fn, err) => listen(rtdb.ref(ROOT + "/checkins/" + ymv), qs, fn, err) }; return q; }
+    };
+  }
+  downloads = { async save({ filename, data }) {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], { type: "application/octet-stream" }));
+    a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); return { status: "saved" };
+  } };
+
+  // ---------- QR ----------
+  const BASE = location.origin + location.pathname;
+  function qrImg(url){ try { const q = qrcode(0, "M"); q.addData(url); q.make(); return q.createDataURL(8, 16); } catch { return ""; } }
+  function qrItems(){ return [{ label: "教師簽到（全部班級）", url: BASE }, ...CLASSES.map(c => ({ label: c.name + " 簽到", url: BASE + "?cls=" + c.id }))]; }
+  let qrDrawn = false;
+  function renderQr(){
+    if (qrDrawn || typeof qrcode === "undefined") return; qrDrawn = true;
+    const g = $("qrGrid"); g.replaceChildren();
+    for (const it of qrItems()) {
+      const box = document.createElement("div"); box.className = "qr";
+      const im = document.createElement("img"); im.src = qrImg(it.url); im.alt = it.label + " QR code";
+      const b = document.createElement("b"); b.textContent = it.label;
+      const u = document.createElement("span"); u.textContent = it.url;
+      box.append(im, b, u); g.appendChild(box);
+    }
+  }
+  $("qrPrint").addEventListener("click", () => {
+    const w = window.open("", "_blank"); if (!w) return;
+    const cells = qrItems().map(it => '<div class="c"><img src="' + qrImg(it.url) + '"><h2>' + it.label + '</h2><p>手機相機掃描即可打卡</p></div>').join("");
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>簽到 QR code</title><style>body{font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;margin:0}.c{page-break-after:always;height:95vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}.c img{width:12cm;image-rendering:pixelated}h2{font-size:32pt;margin:12px 0 0}p{font-size:16pt;color:#555;margin:0}</style></head><body>' + cells + '<script>window.onload=function(){window.print()}<\/script></body></html>');
+    w.document.close();
+  });
+
+  // ---------- start ----------
+  const pc = new URLSearchParams(location.search).get("cls");
+  if (CLASSES.some(c => c.id === pc)) cls = pc;
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    const rtdb = firebase.database();
+    db = makeDb(rtdb);
+    let connected = false;
+    rtdb.ref(".info/connected").on("value", s => { connected = !!s.val(); if (connected) $("offline").hidden = true; });
+    setTimeout(() => { if (!connected) $("offline").hidden = false; }, 8000);
+    db.doc("config/teachers").onSnapshot(s => {
+      const l = s.exists && s.data() && s.data().list ? Object.values(s.data().list) : [];
+      teachers = l.filter(t => t && t.id && t.name).map(t => ({ id: String(t.id), name: String(t.name) }));
+      renderAll();
+    }, () => { $("offline").hidden = false; });
+    db.doc("config/days").onSnapshot(s => {
+      const v = (s.exists && s.data()) || {};
+      const arr = x => x ? Object.values(x).map(String) : [];
+      overrides = { on: arr(v.on), off: arr(v.off) };
+      renderAll();
+    }, () => {});
+    subscribeMonth();
+  } catch (e) { $("offline").hidden = false; }
+  renderAll();
+})();
+</script>
+</body>
+</html>
